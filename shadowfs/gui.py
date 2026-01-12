@@ -128,13 +128,21 @@ class CheckpointGUI:
         """Generate footer."""
         return c("╚" + "═" * (width - 2) + "╝", Colors.CYAN)
     
-    def show(self, limit: int = 10) -> None:
+    def show(self, limit: int = 10, show_model: bool = True) -> None:
         """
         Display checkpoint history GUI.
         
         Similar to GitHub Copilot's checkpoint panel.
+        
+        Args:
+            limit: Maximum number of checkpoints to show.
+            show_model: Whether to show current model at top.
         """
         width = 70
+        
+        # Show current model at top (like Copilot)
+        if show_model:
+            self._show_model_bar(width)
         
         print(self.header("🔄 Restore Points (Before LLM Calls)", width))
         
@@ -155,6 +163,39 @@ class CheckpointGUI:
         print(c("║", Colors.CYAN) + f"     {c('session.restore_before_call', Colors.GREEN)}('{c('call-XXXX', Colors.CYAN)}')" + " " * 24 + c("║", Colors.CYAN))
         print(c("║", Colors.CYAN) + f"     {c('session.show_diff_since_call', Colors.GREEN)}('{c('call-XXXX', Colors.CYAN)}')" + " " * 22 + c("║", Colors.CYAN))
         print(self.footer(width))
+    
+    def _show_model_bar(self, width: int = 70) -> None:
+        """Show the current model selection bar (like Copilot's model dropdown)."""
+        model = self.session.current_model
+        
+        # Provider icons
+        provider_icons = {
+            "openai": "🟢",
+            "anthropic": "🟠",
+            "google": "🔵",
+            "azure": "☁️",
+            "ollama": "🦙",
+            "custom": "⚙️",
+        }
+        icon = provider_icons.get(model.provider.value, "🤖")
+        
+        # Features
+        features = []
+        if model.supports_vision:
+            features.append("👁")
+        if model.supports_tools:
+            features.append("🔧")
+        if model.supports_streaming:
+            features.append("⚡")
+        features_str = " ".join(features)
+        
+        print()
+        print(c("┌" + "─" * (width - 2) + "┐", Colors.MAGENTA))
+        print(c("│", Colors.MAGENTA) + f"  {icon} {c('Model:', Colors.DIM)} {c(model.name, Colors.MAGENTA, Colors.BOLD)}  {features_str}" + " " * (width - 18 - len(model.name) - len(features_str)) + c("│", Colors.MAGENTA))
+        print(c("│", Colors.MAGENTA) + f"     {c(model.description[:50], Colors.DIM)}" + " " * (width - 8 - min(50, len(model.description))) + c("│", Colors.MAGENTA))
+        print(c("│", Colors.MAGENTA) + f"     {c(f'Context: {model.context_window//1000}K tokens', Colors.DIM)}" + " " * (width - 30) + c("[Change: session.select_model()]", Colors.DIM) + c("│", Colors.MAGENTA))
+        print(c("└" + "─" * (width - 2) + "┘", Colors.MAGENTA))
+        print()
     
     def _render_call_card(self, call: LLMCall, width: int, is_last: bool = False) -> None:
         """Render a single LLM call card."""

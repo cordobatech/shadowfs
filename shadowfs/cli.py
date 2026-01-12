@@ -380,6 +380,157 @@ def cmd_checkpoint_history(args):
         print()
 
 
+# =============================================================================
+# Model Commands - Like GitHub Copilot's model selector
+# =============================================================================
+
+
+def cmd_models(args):
+    """Show available models (like Copilot's model selector GUI)."""
+    from .models import get_model_selector
+    
+    selector = get_model_selector()
+    
+    if args.provider:
+        from .models import ModelProvider
+        try:
+            provider = ModelProvider(args.provider.lower())
+            models = selector.list_models(provider=provider, available_only=args.available)
+        except ValueError:
+            print(f"Unknown provider: {args.provider}", file=sys.stderr)
+            sys.exit(1)
+    else:
+        models = selector.list_models(available_only=args.available)
+    
+    if args.json:
+        import json
+        print(json.dumps([m.to_dict() for m in models], indent=2))
+        return
+    
+    # Show GUI
+    selector.show(show_unavailable=not args.available)
+
+
+def cmd_model_select(args):
+    """Select a model interactively or by ID."""
+    from .models import get_model_selector
+    
+    selector = get_model_selector()
+    
+    if args.model_id:
+        # Direct selection
+        try:
+            model = selector.set_model(args.model_id)
+            print(f"✓ Selected: {model.name} ({model.provider.value})")
+        except ValueError as e:
+            # Try quick select shortcuts
+            model = selector.quick_select(args.model_id)
+            if model:
+                print(f"✓ Selected: {model.name} ({model.provider.value})")
+            else:
+                print(f"Unknown model: {args.model_id}", file=sys.stderr)
+                print("Use 'shadowfs models' to see available models.")
+                sys.exit(1)
+    else:
+        # Interactive selection
+        model = selector.select()
+        if not model:
+            sys.exit(0)
+
+
+def cmd_model_current(args):
+    """Show the currently selected model."""
+    from .models import get_model_selector
+    
+    selector = get_model_selector()
+    model = selector.current
+    
+    if args.json:
+        import json
+        print(json.dumps(model.to_dict(), indent=2))
+        return
+    
+    # Provider icons
+    icons = {
+        "openai": "🟢",
+        "anthropic": "🟠",
+        "google": "🔵",
+        "azure": "☁️",
+        "ollama": "🦙",
+        "custom": "⚙️",
+    }
+    icon = icons.get(model.provider.value, "🤖")
+    
+    print(f"\n{icon} Current Model: {model.name}")
+    print(f"   ID: {model.id}")
+    print(f"   Provider: {model.provider.value}")
+    print(f"   Description: {model.description}")
+    print(f"   Context Window: {model.context_window:,} tokens")
+    print(f"   Max Output: {model.max_tokens:,} tokens")
+    
+    features = []
+    if model.supports_vision:
+        features.append("Vision 👁")
+    if model.supports_tools:
+        features.append("Tools 🔧")
+    if model.supports_streaming:
+        features.append("Streaming ⚡")
+    
+    if features:
+        print(f"   Features: {', '.join(features)}")
+    
+    if model.is_available:
+        print(f"   Status: ✅ Available")
+    else:
+        print(f"   Status: ❌ API key not set ({model.api_key_env})")
+
+
+def cmd_model_info(args):
+    """Show detailed info about a specific model."""
+    from .models import get_model_selector
+    
+    selector = get_model_selector()
+    model = selector.get_model(args.model_id)
+    
+    if not model:
+        # Try quick select
+        model = selector.quick_select(args.model_id)
+        if model:
+            # Reset to previous model
+            selector._current_model_id = selector._current_model_id
+    
+    if not model:
+        print(f"Unknown model: {args.model_id}", file=sys.stderr)
+        sys.exit(1)
+    
+    if args.json:
+        import json
+        print(json.dumps(model.to_dict(), indent=2))
+        return
+    
+    print(f"\n📋 Model: {model.name}")
+    print("=" * 50)
+    print(f"ID:              {model.id}")
+    print(f"Provider:        {model.provider.value}")
+    print(f"Description:     {model.description}")
+    print(f"Context Window:  {model.context_window:,} tokens")
+    print(f"Max Output:      {model.max_tokens:,} tokens")
+    print(f"Vision:          {'Yes' if model.supports_vision else 'No'}")
+    print(f"Tools:           {'Yes' if model.supports_tools else 'No'}")
+    print(f"Streaming:       {'Yes' if model.supports_streaming else 'No'}")
+    
+    if model.cost_per_1k_input > 0 or model.cost_per_1k_output > 0:
+        print(f"Cost (input):    ${model.cost_per_1k_input:.4f}/1K tokens")
+        print(f"Cost (output):   ${model.cost_per_1k_output:.4f}/1K tokens")
+    
+    if model.api_key_env:
+        status = "✅ Set" if model.is_available else "❌ Not set"
+        print(f"API Key:         {model.api_key_env} ({status})")
+    
+    if model.endpoint:
+        print(f"Endpoint:        {model.endpoint}")
+
+
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(
@@ -523,6 +674,38 @@ def main():
     )
     cp_history.add_argument("path", help="File path to show history for")
     cp_history.set_defaults(func=cmd_checkpoint_history)
+    
+    # =========================================================================
+    # Model commands (like GitHub Copilot's model selector)
+    # =========================================================================
+    
+    # models (show available models)
+    models_cmd = subparsers.add_parser(
+        "models",
+        help="Show available models (like Copilot's model selector)",
+    )
+    models_cmd.add_argument("--provider", "-p", help="Filter by provider (openai, anthropic, google, ollama)")
+    models_cmd.add_argument("--available", "-a", action="store_true", help="Only show models with API keys configured")
+    models_cmd.add_argument("--json", "-j", action="store_true", help="Output as JSON")
+    models_cmd.set_defaults(func=cmd_models)
+    
+    # model (select or show current model)
+    model_cmd = subparsers.add_parser(
+        "model",
+        help="Select a model or show current",
+    )
+    model_cmd.add_argument("model_id", nargs="?", help="Model ID or shortcut (e.g., 'gpt4o', 'claude', 'sonnet')")
+    model_cmd.add_argument("--json", "-j", action="store_true", help="Output as JSON")
+    model_cmd.set_defaults(func=lambda args: cmd_model_select(args) if args.model_id else cmd_model_current(args))
+    
+    # model-info (show detailed model info)
+    model_info_cmd = subparsers.add_parser(
+        "model-info",
+        help="Show detailed info about a model",
+    )
+    model_info_cmd.add_argument("model_id", help="Model ID or shortcut")
+    model_info_cmd.add_argument("--json", "-j", action="store_true", help="Output as JSON")
+    model_info_cmd.set_defaults(func=cmd_model_info)
     
     args = parser.parse_args()
     args.func(args)

@@ -7,12 +7,15 @@ import os
 import time
 import functools
 from datetime import datetime
-from typing import Dict, List, Optional, Any, Callable, Union
+from typing import Dict, List, Optional, Any, Callable, Union, TYPE_CHECKING
 from dataclasses import dataclass, field
 from pathlib import Path
 from contextlib import contextmanager
 
 from .checkpoint import Checkpoint, CheckpointManager, FileSnapshot
+
+if TYPE_CHECKING:
+    from .models import ModelSelector, ModelConfig
 
 
 @dataclass
@@ -78,6 +81,7 @@ class Session:
         session_name: Optional[str] = None,
         auto_track_extensions: Optional[List[str]] = None,
         max_checkpoints: int = 100,
+        default_model: str = "gpt-4o",
     ):
         """
         Initialize a session.
@@ -87,6 +91,7 @@ class Session:
             session_name: Name for this session.
             auto_track_extensions: File extensions to auto-track (e.g., ['.py', '.js']).
             max_checkpoints: Maximum number of checkpoints to keep.
+            default_model: Default model ID for LLM calls.
         """
         self.workspace_path = Path(workspace_path) if workspace_path else Path.cwd()
         self.session_name = session_name or f"session-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
@@ -98,8 +103,34 @@ class Session:
         self._tracked_files: Dict[str, str] = {}  # path -> content
         self._current_call: Optional[LLMCall] = None
         
+        # Model selector (like Copilot GUI)
+        from .models import ModelSelector
+        self._model_selector = ModelSelector(default_model=default_model)
+        
         # Load workspace files
         self._scan_workspace()
+    
+    @property
+    def model_selector(self) -> "ModelSelector":
+        """Get the model selector."""
+        return self._model_selector
+    
+    @property
+    def current_model(self) -> "ModelConfig":
+        """Get the currently selected model."""
+        return self._model_selector.current
+    
+    def set_model(self, model_id: str) -> "ModelConfig":
+        """Set the current model."""
+        return self._model_selector.set_model(model_id)
+    
+    def show_models(self) -> None:
+        """Show available models (like Copilot's model selector)."""
+        self._model_selector.show()
+    
+    def select_model(self) -> Optional["ModelConfig"]:
+        """Interactive model selection."""
+        return self._model_selector.select()
     
     def _scan_workspace(self) -> None:
         """Scan workspace for trackable files."""
@@ -163,7 +194,7 @@ class Session:
     @contextmanager
     def llm_call(
         self,
-        model: str = "unknown",
+        model: Optional[str] = None,
         prompt: str = "",
         description: Optional[str] = None,
     ):
@@ -174,7 +205,7 @@ class Session:
         GitHub Copilot's restore points.
         
         Args:
-            model: LLM model name.
+            model: LLM model name. If None, uses currently selected model.
             prompt: The prompt being sent.
             description: Optional description for the checkpoint.
             
@@ -182,7 +213,16 @@ class Session:
             with session.llm_call("gpt-4", "Refactor function"):
                 response = my_llm_api(prompt)
                 session.track_file("modified.py")
+            
+            # Or use current model from selector
+            session.set_model("claude-sonnet-4-20250514")
+            with session.llm_call(prompt="Refactor"):
+                response = call_claude()
         """
+        # Use current model from selector if not specified
+        if model is None:
+            model = self._model_selector.current.id
+        
         call_id = self._generate_call_id()
         timestamp = datetime.utcnow().isoformat() + "Z"
         

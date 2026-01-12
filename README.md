@@ -12,6 +12,7 @@ A virtual filesystem overlay for GitHub repositories. Access GitHub repos as if 
 - 📁 **Directory Listing** - Full directory traversal support
 - ⏪ **Checkpoint/Restore** - Save snapshots and restore files like GitHub Copilot
 - 📊 **File History** - Track changes across checkpoints with diff support
+- 🤖 **Model Selector** - Choose LLM models like GitHub Copilot's GUI (GPT-4o, Claude, Gemini, Ollama)
 
 ## Installation
 
@@ -315,6 +316,140 @@ session.save()  # Saves to .shadowfs/session.json
 # Load a previous session
 from shadowfs import Session
 session = Session.load(".shadowfs/session.json")
+```
+
+## Model Selector (Like GitHub Copilot's GUI)
+
+ShadowFS includes a model selector similar to GitHub Copilot's model dropdown. Choose from GPT-4o, Claude, Gemini, Ollama, and more.
+
+### CLI Commands
+
+```bash
+# Show all available models (GUI-like display)
+shadowfs models
+
+# Show only models with API keys configured
+shadowfs models --available
+
+# Select a model interactively
+shadowfs model
+
+# Quick select by shortcut or ID
+shadowfs model gpt4o
+shadowfs model claude
+shadowfs model sonnet
+shadowfs model opus
+shadowfs model mini
+shadowfs model llama
+
+# Show current model
+shadowfs model
+
+# Show detailed model info
+shadowfs model-info claude-sonnet-4-20250514
+```
+
+### Python API
+
+```python
+from shadowfs import ModelSelector, show_models, select_model, set_model, get_model
+
+# Show available models (like Copilot's dropdown)
+show_models()
+```
+
+Output:
+```
+╔═════════════════════════════════════════════════════════════════════════╗
+║  🤖 Model Selector                                                      ║
+╠═════════════════════════════════════════════════════════════════════════╣
+║                                                                         ║
+║  🟢 OPENAI                                                              ║
+║  ───────────────────────────────────────────────────────────────        ║
+║  ● GPT-4o                  👁 🔧    128K                                 ║
+║  ○ GPT-4o Mini             👁 🔧    128K                                 ║
+║  ○ GPT-4 Turbo             👁 🔧    128K                                 ║
+║  ○ o1                      👁 🔧    200K                                 ║
+║                                                                         ║
+║  🟠 ANTHROPIC                                                           ║
+║  ───────────────────────────────────────────────────────────────        ║
+║  ○ Claude Sonnet 4         👁 🔧    200K                                 ║
+║  ○ Claude Opus 4           👁 🔧    200K                                 ║
+║  ○ Claude 3.5 Haiku        👁 🔧    200K                                 ║
+║                                                                         ║
+║  🦙 OLLAMA                                                              ║
+║  ───────────────────────────────────────────────────────────────        ║
+║  ○ Llama 3.3 70B              🔧    131K                                ║
+║  ○ DeepSeek Coder V2          🔧    128K                                ║
+╠═════════════════════════════════════════════════════════════════════════╣
+║  Legend: 👁 Vision  🔧 Tools  ● Selected                                ║
+║  Current: GPT-4o                                                        ║
+╚═════════════════════════════════════════════════════════════════════════╝
+```
+
+### Interactive Selection
+
+```python
+# Interactive model selection (like Copilot)
+model = select_model()
+```
+
+### With Session
+
+```python
+from shadowfs import Session
+
+session = Session(workspace_path=".")
+
+# Show models
+session.show_models()
+
+# Select model interactively
+session.select_model()
+
+# Or set directly
+session.set_model("claude-sonnet-4-20250514")
+
+# LLM calls now use the selected model automatically
+with session.llm_call(prompt="Refactor this code"):
+    # Uses claude-sonnet-4 automatically
+    response = call_claude()
+```
+
+### Quick Select Shortcuts
+
+| Shortcut | Model |
+|----------|-------|
+| `4o`, `gpt4o` | GPT-4o |
+| `mini`, `4m` | GPT-4o Mini |
+| `o1` | o1 |
+| `claude`, `sonnet` | Claude Sonnet 4 |
+| `opus` | Claude Opus 4 |
+| `haiku` | Claude 3.5 Haiku |
+| `gemini`, `flash` | Gemini 2.0 Flash |
+| `llama` | Llama 3.3 70B |
+| `deepseek` | DeepSeek Coder V2 |
+| `qwen` | Qwen 2.5 Coder |
+
+### Add Custom Models
+
+```python
+from shadowfs import ModelSelector, ModelConfig, ModelProvider
+
+selector = ModelSelector()
+
+# Add a custom model
+selector.add_model(ModelConfig(
+    id="my-custom-model",
+    name="My Custom Model",
+    provider=ModelProvider.CUSTOM,
+    description="A fine-tuned model for my use case",
+    max_tokens=4096,
+    context_window=16384,
+    endpoint="https://my-api.com/v1/chat",
+))
+
+selector.set_model("my-custom-model")
 ```
 
 ## Configuration
