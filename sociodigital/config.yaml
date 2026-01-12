@@ -1,0 +1,22 @@
+# Sociodigital Configuration File
+# This file contains configuration settings for the sociodigital project
+
+app:
+  name: sociodigital
+  version: 1.0.0
+  environment: development
+
+server:
+  host: localhost
+  port: 8080
+
+logging:
+  level: INFO
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+database:
+  enabled: false
+  # Uncomment and configure when database is needed
+  # host: localhost
+  # port: 5432
+  # name: sociodigital_db
