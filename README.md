@@ -162,6 +162,161 @@ for entry in history:
     print(f"{entry['checkpoint_name']}: {entry['sha'][:8]}")
 ```
 
+## Automatic Checkpoints Before LLM Calls (Like GitHub Copilot GUI)
+
+ShadowFS provides automatic checkpoint creation before every LLM call, similar to GitHub Copilot's restore functionality in VS Code. This ensures you can always roll back changes made by AI.
+
+### Session-Based Auto-Checkpointing
+
+```python
+from shadowfs import Session, show_checkpoints
+
+# Create a session for your workspace
+session = Session(workspace_path="/path/to/project")
+
+# Files are automatically tracked based on extension
+# .py, .js, .ts, .jsx, .tsx, .md, .yaml, .json
+
+# Wrap LLM calls - checkpoint created BEFORE each call
+with session.llm_call("gpt-4", "Refactor the authentication module"):
+    response = openai.chat.completions.create(...)
+    # Track files that were modified
+    session.track_file("src/auth.py")
+    session.track_file("src/utils.py")
+
+# View history (like Copilot's checkpoint GUI)
+print(session.show_history())
+```
+
+Output:
+```
+╔══════════════════════════════════════════════════════════════════╗
+║                    🔄 Restore Points (Before LLM Calls)          ║
+╠══════════════════════════════════════════════════════════════════╣
+║                                                                  ║
+║  ✓ DONE   call-0003  gpt-4         @ 10:45 AM                   ║
+║     │  📝 Add error handling to payment flow...                  ║
+║     │  📁 2 files                                                ║
+║     ▼                                                            ║
+║  ✓ DONE   call-0002  claude-3      @ 10:30 AM                   ║
+║     │  📝 Refactor the authentication module...                  ║
+║     │  📁 3 files                                                ║
+║     ▼                                                            ║
+║  ↩ REST   call-0001  gpt-4         @ 10:15 AM                   ║
+║     │  📝 Initial setup...                                       ║
+║     │  📁 1 file                                                 ║
+╠══════════════════════════════════════════════════════════════════╣
+║  💡 Use session.restore_before_call('call-XXXX') to restore     ║
+╚══════════════════════════════════════════════════════════════════╝
+```
+
+### Restore to Before Any LLM Call
+
+```python
+# Restore to before a specific call
+session.restore_before_call("call-0002")
+
+# Or restore to before the most recent call
+session.restore_latest()
+
+# See what changed since a checkpoint
+print(session.show_diff_since_call("call-0002"))
+```
+
+### Using the Decorator
+
+```python
+from shadowfs import Session
+
+session = Session(workspace_path=".")
+
+@session.auto_checkpoint("gpt-4")
+def ask_gpt(prompt):
+    return openai.chat.completions.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": prompt}]
+    )
+
+# Every call automatically creates a restore point
+response = ask_gpt("Add logging to all functions")
+```
+
+### Global AutoCheckpoint (Simplest Usage)
+
+```python
+from shadowfs import AutoCheckpoint
+
+# Initialize once
+auto_cp = AutoCheckpoint("/path/to/project")
+
+# Wrap any LLM call
+response = auto_cp.wrap(
+    lambda: my_llm_api(prompt),
+    model="gpt-4",
+    prompt="your prompt"
+)
+
+# Or use context manager
+with auto_cp.before_call("claude-3", "Optimize database queries"):
+    response = call_claude(...)
+    auto_cp.track("src/db.py")
+
+# View history
+print(auto_cp.history())
+
+# Restore (interactive or specific)
+auto_cp.restore()  # Restores to latest checkpoint
+auto_cp.restore("call-0001")  # Restores to specific checkpoint
+```
+
+### Interactive Restore (GUI-like)
+
+```python
+from shadowfs import interactive_restore, Session
+
+session = Session(workspace_path=".")
+
+# ... after some LLM calls ...
+
+# Interactive menu to select and restore
+interactive_restore(session)
+```
+
+Output:
+```
+📍 Select a restore point:
+
+  1) ✅ [call-0003] gpt-4 @ 10:45 AM
+      Add error handling to payment flow...
+
+  2) ✅ [call-0002] claude-3 @ 10:30 AM
+      Refactor the authentication module...
+
+  3) ↩️ [call-0001] gpt-4 @ 10:15 AM
+      Initial setup...
+
+  0) Cancel
+
+Enter number: 2
+Restore to before call-0002? [y/N] y
+
+✅ Restored 3 files to state before call-0002
+   • src/auth.py
+   • src/utils.py
+   • config.yaml
+```
+
+### Persist Sessions
+
+```python
+# Save session for later
+session.save()  # Saves to .shadowfs/session.json
+
+# Load a previous session
+from shadowfs import Session
+session = Session.load(".shadowfs/session.json")
+```
+
 ## Configuration
 
 Create `~/.shadowfs/config.yaml`:
