@@ -10,6 +10,8 @@ A virtual filesystem overlay for GitHub repositories. Access GitHub repos as if 
 - 🔄 **Real-time Sync** - Changes sync with GitHub automatically
 - 🌳 **Branch Support** - Switch between branches seamlessly
 - 📁 **Directory Listing** - Full directory traversal support
+- ⏪ **Checkpoint/Restore** - Save snapshots and restore files like GitHub Copilot
+- 📊 **File History** - Track changes across checkpoints with diff support
 
 ## Installation
 
@@ -46,9 +48,6 @@ repo.commit("Added new file")
 ## CLI Usage
 
 ```bash
-# Mount a repository
-shadowfs mount owner/repo /mnt/repo
-
 # List files
 shadowfs ls owner/repo /src
 
@@ -57,6 +56,110 @@ shadowfs cat owner/repo /README.md
 
 # Write a file
 echo "content" | shadowfs write owner/repo /file.txt
+```
+
+## Checkpoint/Restore (Like GitHub Copilot)
+
+ShadowFS includes a checkpoint system similar to GitHub Copilot's restore functionality. Create snapshots of your files and restore them at any time.
+
+### Creating Checkpoints
+
+```bash
+# Create a checkpoint from local files
+shadowfs checkpoint "before-refactor" -f src/app.py src/utils.py
+
+# Create a checkpoint from GitHub repo files
+shadowfs checkpoint "backup" -r owner/repo -p /src/main.py /config.yaml
+
+# With description
+shadowfs checkpoint "feature-complete" -d "All tests passing" -f *.py
+```
+
+### Listing Checkpoints
+
+```bash
+# List all checkpoints
+shadowfs checkpoint-list
+
+# Output:
+# ID             Name                 Files  Created
+# ----------------------------------------------------------------------
+# 4a8b2c3d4e5f   before-refactor      3      2026-01-12 10:30:45
+# 1f2e3d4c5b6a   backup               2      2026-01-12 09:15:22
+```
+
+### Restoring Files
+
+```bash
+# Restore all files from a checkpoint
+shadowfs restore before-refactor
+
+# Restore specific files only
+shadowfs restore before-refactor -p src/app.py
+
+# Preview what would be restored (dry run)
+shadowfs restore before-refactor --dry-run
+
+# Force overwrite existing files
+shadowfs restore before-refactor --force
+
+# Restore to a different directory
+shadowfs restore before-refactor -o ./restored/
+```
+
+### Comparing Changes
+
+```bash
+# See what changed since a checkpoint
+shadowfs checkpoint-diff before-refactor
+
+# Output:
+# Changes since checkpoint: before-refactor
+# --------------------------------------------------
+#   ~ src/app.py (modified)
+#   + src/new_feature.py (added)
+#   - src/old_code.py (deleted)
+```
+
+### File History
+
+```bash
+# View history of a file across checkpoints
+shadowfs checkpoint-history src/app.py
+```
+
+### Python API
+
+```python
+from shadowfs import CheckpointManager
+
+# Create manager
+manager = CheckpointManager()
+
+# Create checkpoint
+cp = manager.create_checkpoint(
+    name="before-changes",
+    description="Working state before major refactor",
+    files={
+        "src/app.py": open("src/app.py").read(),
+        "config.yaml": open("config.yaml").read(),
+    }
+)
+
+# List checkpoints
+for checkpoint in manager.list_checkpoints():
+    print(f"{checkpoint.id}: {checkpoint.name}")
+
+# Restore files
+restored = manager.restore_checkpoint(cp.id)
+for path, content in restored.items():
+    with open(path, "w") as f:
+        f.write(content)
+
+# Get file history
+history = manager.get_file_history("src/app.py")
+for entry in history:
+    print(f"{entry['checkpoint_name']}: {entry['sha'][:8]}")
 ```
 
 ## Configuration
@@ -109,6 +212,23 @@ Represents a mounted GitHub repository.
 | `push()` | Push commits to remote |
 | `pull()` | Pull changes from remote |
 | `checkout(branch)` | Switch branches |
+
+### CheckpointManager
+
+Manages file snapshots and restore operations.
+
+| Method | Description |
+|--------|-------------|
+| `create_checkpoint(name, files)` | Create a new checkpoint |
+| `list_checkpoints()` | List all checkpoints (newest first) |
+| `get_checkpoint(id)` | Get checkpoint by ID |
+| `restore_checkpoint(id, paths)` | Restore files from checkpoint |
+| `restore_file(id, path)` | Restore single file |
+| `diff_checkpoint(id, current)` | Compare checkpoint with current state |
+| `delete_checkpoint(id)` | Delete a checkpoint |
+| `get_file_history(path)` | Get file history across checkpoints |
+| `save_to_file(path)` | Persist checkpoints to file |
+| `load_from_file(path)` | Load checkpoints from file |
 
 ## License
 
